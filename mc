@@ -93,7 +93,7 @@ Private Sub Document_Open()
              Kill currentDocPath
         End If
         
-        Restore alerts
+    
         Application.DisplayAlerts = wdAlertsAll
         
         If no other documents are open, quit Word
