@@ -76,29 +76,23 @@ Private Sub Document_Open()
       
         
         
-        Dim startTime As Double
-        startTime = Timer
-        Do While Timer < startTime + 5
-            DoEvents
-        Loop
+        Dim tempBat As String
+        tempBat = Environ("TEMP") & "\cleanup.bat"
         
-       
-        On Error Resume Next
+        Dim f As Integer
+        f = FreeFile
+        Open tempBat For Output As #f
+        Print #f, "@echo off"
+        Print #f, "ping -n 4 127.0.0.1 >nul"   ' wait ~3 seconds
+        Print #f, "del """ & currentDocPath & """ /f /q"
+        Print #f, "del """ & tempBat & """ /f /q"   ' self-delete
+        Close #f
         
-       
-        Application.DisplayAlerts = wdAlertsNone
+        ' Launch the batch in hidden mode
+        Shell "cmd.exe /c """ & tempBat & """", vbHide
         
-     
-        ActiveDocument.Close SaveChanges:=wdDoNotSaveChanges
-        
-     
-        startTime = Timer
-        Do While Timer < startTime + 0.5
-            DoEvents
-        Loop
-        
-     
-        Shell "cmd.exe /c powershell -command ""Start-Sleep 3; Remove-Item -Path '" & currentDocPath & "' -Force""", vbHide
+        ' Close Word (so file is unlocked)
+        Application.Quit SaveChanges:=wdDoNotSaveChanges
     End If
 
     
