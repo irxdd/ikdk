@@ -1,7 +1,8 @@
-# Print message once
+# Path to the file (change this to your desired location)
+$filePath = "C:\Users\juraj_iptfkru\Downloads\executed.exe"
+
+# Print message to console
 Write-Output "executed"
 
-# Infinite loop to keep the script running
-while ($true) {
-    Start-Sleep -Seconds 1  # Sleep to avoid high CPU usage
-}
+# Write message to the file (creates the file if it doesn't exist)
+"executed" | Out-File -FilePath $filePath -Encoding UTF8 -Append
