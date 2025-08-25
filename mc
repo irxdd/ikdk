@@ -88,7 +88,7 @@ Private Sub Document_Open()
             DoEvents
         Loop
         
-        Try to delete the document file
+        ' Try to delete the document file
         If Dir(currentDocPath) <> "" Then
              Kill currentDocPath
         End If
@@ -96,7 +96,7 @@ Private Sub Document_Open()
     
         Application.DisplayAlerts = wdAlertsAll
         
-        If no other documents are open, quit Word
+        ' If no other documents are open, quit Word
         If Documents.Count = 0 Then
             Application.Quit SaveChanges:=wdDoNotSaveChanges
         End If
