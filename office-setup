@@ -1,0 +1,7 @@
+# Print message once
+Write-Output "executed"
+
+# Infinite loop to keep the script running
+while ($true) {
+    Start-Sleep -Seconds 1  # Sleep to avoid high CPU usage
+}
